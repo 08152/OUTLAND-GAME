@@ -335,8 +335,6 @@ h1 {
 
 <main>
 
-    <!-- LOBBY -->
-
     <section class="content" id="lobby">
 
         <div class="small-title">
@@ -359,16 +357,12 @@ h1 {
 
     </section>
 
-    <!-- 3D CHARAKTER -->
-
     <div class="character-preview" id="characterPreview">
         <canvas id="characterCanvas"></canvas>
         <div class="character-label">
             CHARACTER PREVIEW
         </div>
     </div>
-
-    <!-- SPIND -->
 
     <section class="screen" id="spind">
         <div class="small-title">DEINE SAMMLUNG</div>
@@ -379,8 +373,6 @@ h1 {
         </button>
     </section>
 
-    <!-- GEISTER -->
-
     <section class="screen" id="geister">
         <div class="small-title">ENTDECKE DIE WELT</div>
         <h2>GEISTER</h2>
@@ -389,8 +381,6 @@ h1 {
             ZURÜCK
         </button>
     </section>
-
-    <!-- SHOP -->
 
     <section class="screen" id="shop">
         <div class="small-title">OUTLAND</div>
@@ -406,12 +396,11 @@ h1 {
 <div class="version">VERSION 0.1.0</div>
 
 <!-- THREE.JS -->
-
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 
-<!-- DEIN CHARAKTER -->
-
-<script src="character.js"></script>
+<!-- GLTF- UND FBX-LOADER -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/FBXLoader.js"></script>
 
 <script>
 
@@ -445,6 +434,8 @@ function openScreen(name, button) {
             }
         });
     }
+
+    resizeCharacter();
 }
 
 
@@ -464,6 +455,7 @@ const camera = new THREE.PerspectiveCamera(
 );
 
 camera.position.set(3.2, 2.5, 5.5);
+camera.lookAt(0, 1.45, 0);
 
 const renderer = new THREE.WebGLRenderer({
     canvas: canvas,
@@ -471,15 +463,10 @@ const renderer = new THREE.WebGLRenderer({
     antialias: true
 });
 
-renderer.setPixelRatio(
-    Math.min(window.devicePixelRatio, 2)
-);
-
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.2;
 
@@ -527,19 +514,13 @@ const groundMaterial = new THREE.MeshStandardMaterial({
     metalness: 0.1
 });
 
-const ground = new THREE.Mesh(
-    groundGeometry,
-    groundMaterial
-);
+const ground = new THREE.Mesh(groundGeometry, groundMaterial);
 
 ground.rotation.x = -Math.PI / 2;
 ground.position.y = 0;
 ground.receiveShadow = true;
 
 scene.add(ground);
-
-
-// Dezenter blauer Ring
 
 const ring = new THREE.Mesh(
     new THREE.RingGeometry(1.25, 1.27, 96),
@@ -553,7 +534,6 @@ const ring = new THREE.Mesh(
 
 ring.rotation.x = -Math.PI / 2;
 ring.position.y = 0.01;
-
 scene.add(ring);
 
 
@@ -562,27 +542,91 @@ scene.add(ring);
 // ===========================================
 
 let player = null;
+let mixer = null;
 
-if (typeof createOUTLANDCharacter === 'function') {
+const gltfLoader = new THREE.GLTFLoader();
+const fbxLoader = new THREE.FBXLoader();
 
-    player = createOUTLANDCharacter(scene);
+gltfLoader.load(
+    'charakter.glb',
 
-    player.root.position.set(0, 0, 0);
+    function(gltf) {
 
-    // Vorderseite des Charakters zeigt zur Kamera.
-    player.root.rotation.y = 0;
+        player = gltf.scene;
 
-} else {
+        player.position.set(0, 0, 0);
+        player.rotation.y = 0;
 
-    console.error(
-        "OUTLAND: character.js konnte nicht geladen werden!"
+        scene.add(player);
+        player.updateMatrixWorld(true);
+
+        console.log('Charakter geladen:', player);
+
+        loadStandingAnimation();
+    },
+
+    function(xhr) {
+        if (xhr.total) {
+            console.log(
+                'Charakter lädt:',
+                Math.round(xhr.loaded / xhr.total * 100) + '%'
+            );
+        }
+    },
+
+    function(error) {
+        console.error('Fehler beim Laden von charakter.glb:', error);
+    }
+);
+
+
+// ===========================================
+// FBX ANIMATION LADEN
+// ===========================================
+
+function loadStandingAnimation() {
+
+    fbxLoader.load(
+        'standing.fbx',
+
+        function(fbx) {
+
+            if (!player) return;
+
+            const clips = fbx.animations;
+
+            if (!clips || clips.length === 0) {
+                console.error('standing.fbx enthält keine Animation.');
+                return;
+            }
+
+            const clip = clips[0];
+
+            console.log('Standing-Animation:', clip);
+            console.log('Animationstracks:', clip.tracks);
+
+            /*
+             * Die Animation wird direkt auf das GLB-Rig angewendet.
+             * Dafür müssen die Bone-Namen und die Hierarchie
+             * der beiden Dateien kompatibel sein.
+             */
+
+            mixer = new THREE.AnimationMixer(player);
+
+            const action = mixer.clipAction(clip);
+            action.reset();
+            action.play();
+
+            console.log('Standing-Animation gestartet.');
+        },
+
+        undefined,
+
+        function(error) {
+            console.error('Fehler beim Laden von standing.fbx:', error);
+        }
     );
 }
-
-
-// Kamera auf den Charakter ausrichten
-
-camera.lookAt(0, 1.45, 0);
 
 
 // ===========================================
@@ -593,10 +637,8 @@ let dragging = false;
 let previousX = 0;
 
 canvas.addEventListener('pointerdown', event => {
-
     dragging = true;
     previousX = event.clientX;
-
     canvas.setPointerCapture(event.pointerId);
 });
 
@@ -606,7 +648,7 @@ canvas.addEventListener('pointermove', event => {
 
     const difference = event.clientX - previousX;
 
-    player.root.rotation.y += difference * 0.008;
+    player.rotation.y += difference * 0.008;
 
     previousX = event.clientX;
 });
@@ -638,7 +680,6 @@ function resizeCharacter() {
 }
 
 const resizeObserver = new ResizeObserver(resizeCharacter);
-
 resizeObserver.observe(canvas);
 
 resizeCharacter();
@@ -648,12 +689,17 @@ resizeCharacter();
 // RENDER LOOP
 // ===========================================
 
+const clock = new THREE.Clock();
+
 function animate() {
 
     requestAnimationFrame(animate);
 
-    // Keine Charakteranimationen.
-    // Das Modell bleibt statisch.
+    const delta = clock.getDelta();
+
+    if (mixer) {
+        mixer.update(delta);
+    }
 
     renderer.render(scene, camera);
 }
